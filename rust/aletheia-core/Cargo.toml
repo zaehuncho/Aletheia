@@ -1,0 +1,33 @@
+﻿[package]
+name = "aletheia-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Aletheia PE analysis engine. Ported from the Python reference; validated against the shared golden files at ../../tests/goldens/."
+
+[lib]
+name = "aletheia_core"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+iced-x86 = { version = "1.21", default-features = false, features = ["std", "decoder", "instr_info", "gas", "intel", "nasm", "masm"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_System_Threading",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_Memory",
+  "Win32_System_ProcessStatus",
+  "Win32_System_Kernel",
+  "Win32_Security",
+] }
+
+
+[dev-dependencies]
+pretty_assertions = "1.4"

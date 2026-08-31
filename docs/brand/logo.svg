@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Aletheia">
+ <title>Aletheia</title>
+ <g fill="currentColor">
+  <polygon points="245,80 267,80 280,95 256,130 232,95"/>
+  <polygon points="280,95 256,130 330,450 392,450"/>
+  <polygon points="232,95 256,130 198,390 151,390"/>
+  <polygon points="143,420 192,420 185,450 135,450"/>
+  <rect x="213" y="310" width="88" height="30"/>
+ </g>
+</svg>

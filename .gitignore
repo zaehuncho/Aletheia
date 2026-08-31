@@ -1,0 +1,55 @@
+# Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Virtualenvs
+.venv/
+venv/
+env/
+
+# Analysis scratch (dumped payloads, sample binaries — never commit malware)
+samples/
+dumps/
+bench/
+ghidra/
+*.dmp
+*.bin
+*.pdb
+
+# Ephemeral / scratch
+/tmp/
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Packer benchmark samples (drop-in only; never commit binaries)
+tools/benchmark/samples/*
+!tools/benchmark/samples/README.md
+
+# Packer benchmark scratch dirs (per-input work areas)
+.aletheia_bench_*/
+
+# Rust build artifacts
+rust/target/
+rust/**/target/
+rust/Cargo.lock
+
+# Tauri app front-end deps + build
+rust/aletheia-app/node_modules/
+rust/aletheia-app/dist/
+rust/aletheia-app/src-tauri/target/
+
+# Test-corpus build artifacts (source is tracked; binaries are not)
+test-corpus/canary/target/
+test-corpus/canary/Cargo.lock
+test-corpus/**/*.exe

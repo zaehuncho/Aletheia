@@ -1,0 +1,56 @@
+;
+; aletheia.inf -- installation info for the Aletheia HV kernel-mode driver.
+;
+; Loaded via `sc create` (the direct route) OR `pnputil -a` / SetupCopyOEMInf
+; (the driver-package route). Aletheia is a legacy filter-style driver -- no
+; device tree, no PDO enumeration -- so the "sc create AletheiaHV type= kernel
+; binPath= C:\...\aletheia_hv.sys" path is the usual one.
+;
+; This INF exists so DevManager / pnputil / DriverStore Explorer sees the
+; driver as a proper package (INF + CAT + SYS + version block), which lets
+; you enumerate + revoke it cleanly and gives signtool.exe a CAT to hash.
+;
+; TEST-SIGNED: this driver is signed with a self-generated test cert. You
+; MUST enable test-signing on the target machine before install:
+;    bcdedit /set testsigning on
+;    (reboot)
+;
+
+[Version]
+Signature   = "$WINDOWS NT$"
+Class       = System
+ClassGuid   = {4D36E97D-E325-11CE-BFC1-08002BE10318}
+Provider    = %ProviderName%
+DriverVer   = 01/01/2026,1.0.0.0
+CatalogFile = aletheia_hv.cat
+PnpLockdown = 1
+
+[SourceDisksNames]
+1 = %DiskName%,,,""
+
+[SourceDisksFiles]
+aletheia_hv.sys = 1
+
+[DestinationDirs]
+DefaultDestDir = 12          ; %SystemRoot%\System32\drivers
+
+[DefaultInstall]
+CopyFiles = @aletheia_hv.sys
+
+[DefaultInstall.Services]
+AddService = AletheiaHV,,AletheiaHV_Service
+
+[AletheiaHV_Service]
+DisplayName    = %ServiceName%
+Description    = %ServiceDescription%
+ServiceType    = 1           ; SERVICE_KERNEL_DRIVER
+StartType      = 3           ; SERVICE_DEMAND_START (do NOT auto-start)
+ErrorControl   = 1           ; SERVICE_ERROR_NORMAL
+ServiceBinary  = %12%\aletheia_hv.sys
+LoadOrderGroup = Base
+
+[Strings]
+ProviderName       = "Aletheia (defensive VMI research)"
+DiskName           = "Aletheia HV Install Disk"
+ServiceName        = "Aletheia HV"
+ServiceDescription = "Clean-room VT-x/EPT + AMD-V/NPT introspection hypervisor. Defensive research build, unsigned/test-signed only."

@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+/* Aletheia brand palette -- must match docs/brand/palette.css. */
+@theme {
+    --color-al-bg:         #05070A;
+    --color-al-surface:    #0B0E13;
+    --color-al-surface-2:  #10141B;
+    --color-al-surface-3:  #171B24;
+    --color-al-border:     #1E232D;
+    --color-al-border-hi:  #2A313C;
+    --color-al-text:       #EAEAEA;
+    --color-al-text-mute:  #8A93A6;
+    --color-al-text-dim:   #5A6273;
+    --color-al-accent:     #3EE0D0;
+    --color-al-accent-hi:  #5FE9DB;
+    --color-al-accent-dim: #1E5D57;
+    --color-al-warn:       #E8B04F;
+    --color-al-danger:     #F26E6E;
+    --color-al-ok:         #5FD98A;
+    /* syntax palette for disasm operands */
+    --color-al-op-reg:     #7DD3FC;   /* registers: light blue */
+    --color-al-op-imm:     #FBBF77;   /* immediates: amber-ish */
+    --color-al-op-mem:     #C4B5FD;   /* memory refs: violet-ish */
+    --color-al-op-punct:   #64748B;   /* commas/brackets/plus: dim */
+}
+
+html, body, #root { height: 100%; margin: 0; overflow: hidden; }
+body {
+    background: var(--color-al-bg);
+    color: var(--color-al-text);
+    font-family: "Inter var", "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv11", "ss01";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    user-select: none;
+    letter-spacing: -0.005em;
+}
+code, pre, .mono, .selectable-text {
+    font-family: "JetBrains Mono", "Consolas", "Menlo", monospace;
+    font-feature-settings: "calt", "ss02", "ss03";
+    letter-spacing: 0;
+}
+.selectable-text { user-select: text; cursor: text; }
+
+/* scrollbars — bumped to 10px with a distinct surface-3 thumb so they read
+   as UI, not decoration. Accent on hover so the affordance is obvious. */
+*::-webkit-scrollbar        { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track  { background: var(--color-al-surface); }
+*::-webkit-scrollbar-thumb  { background: var(--color-al-surface-3); border-radius: 5px; border: 2px solid var(--color-al-surface); }
+*::-webkit-scrollbar-thumb:hover { background: var(--color-al-accent); }
+*::-webkit-scrollbar-corner { background: var(--color-al-surface); }
+
+/* transitions */
+button, a, .clickable { transition: color .12s ease, background-color .12s ease, border-color .12s ease, transform .12s ease; }
+input:focus { outline: none; }
+
+/* skeleton shimmer */
+@keyframes al-shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+.skeleton {
+    background: linear-gradient(90deg, var(--color-al-surface) 0%, var(--color-al-surface-3) 50%, var(--color-al-surface) 100%);
+    background-size: 800px 100%;
+    animation: al-shimmer 1.4s linear infinite;
+    border-radius: 3px;
+}
+
+/* toast */
+@keyframes al-slide-in { from { transform: translateY(20px); opacity: 0; } to { transform: none; opacity: 1; } }
+.toast { animation: al-slide-in .18s ease-out; }
+
+/* fades + rise */
+@keyframes al-fade-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+.fade-in { animation: al-fade-in .18s ease-out; }
+.rise-on-hover:hover { transform: translateY(-1px); }
+
+/* drop-zone pulse */
+@keyframes al-drop-pulse {
+    0%,100% { border-color: var(--color-al-accent); box-shadow: 0 0 0 0 var(--color-al-accent-dim); }
+    50%     { border-color: var(--color-al-accent-hi); box-shadow: 0 0 0 6px rgba(62,224,208,0.08); }
+}
+.drop-active { animation: al-drop-pulse 1.4s ease-in-out infinite; }
+
+/* spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* panel top-highlight -- a 1px lighter line inside a border for depth */
+.panel-depth { box-shadow: inset 0 1px 0 rgba(255,255,255,0.03); }
+
+/* subtle grid texture (used by the workbench background) */
+.grid-bg {
+    background-image:
+        linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: -1px -1px;
+}
+
+/* row zebra for dense tables */
+.zebra > :nth-child(odd) { background: rgba(255,255,255,0.014); }
+
+/* Constellation: subtle grid of accent dots that slowly drifts. */
+@keyframes al-drift { 0% { transform: translate(0, 0) } 100% { transform: translate(24px, 24px) } }
+.constellation {
+    background-image: radial-gradient(rgba(62,224,208,0.10) 1px, transparent 1.6px);
+    background-size: 32px 32px;
+    animation: al-drift 22s linear infinite alternate;
+    opacity: .55;
+}

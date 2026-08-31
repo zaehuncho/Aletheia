@@ -1,0 +1,17 @@
+/* Aletheia brand palette -- one source of truth.
+   Used by the viewer, README badges, and the Tauri app theme.
+   Do NOT hard-code these colors anywhere else. */
+:root {
+    --al-bg:        #0F1218;   /* app / hero */
+    --al-surface:   #161B22;   /* cards, code blocks */
+    --al-border:    #2A313C;   /* dividers */
+    --al-text:      #EAEAEA;   /* body */
+    --al-text-mute: #8A93A6;   /* secondary */
+    --al-accent:    #3EE0D0;   /* primary */
+    --al-accent-hi: #5FE9DB;   /* hover */
+    --al-warn:      #E8B04F;   /* suspicious */
+    --al-danger:    #F26E6E;   /* hard fail */
+    --al-ok:        #5FD98A;   /* clean / green */
+    --al-bg-light:  #F7F8FA;
+    --al-text-light:#1A1F29;
+}

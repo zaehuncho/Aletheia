@@ -1,0 +1,6 @@
+[toolchain]
+channel = "stable"
+targets = ["x86_64-pc-windows-msvc"]
+components = ["rustfmt", "clippy"]
+# Pinned to MSVC because Tauri's dep tree needs proper Windows linker
+# tooling; the default GNU toolchain lacks dlltool.exe.
