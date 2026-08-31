@@ -9,7 +9,10 @@
 //! matches capstone's output on the Python side. Formatter is Intel syntax
 //! (Python default).
 
-use iced_x86::{Decoder, DecoderOptions, FlowControl, Formatter, Instruction as IcedInsn, IntelFormatter, OpKind};
+use iced_x86::{
+    Decoder, DecoderOptions, FlowControl, Formatter, Instruction as IcedInsn, IntelFormatter,
+    OpKind,
+};
 use serde::{Deserialize, Serialize};
 
 /// A single decoded instruction. Mirrors `Instruction` on the Python side.
@@ -46,7 +49,7 @@ impl Instruction {
 // serde helper: hex-encode bytes for compact JSON transit.
 mod hex_bytes {
     use serde::{Deserialize, Deserializer, Serializer};
-    pub fn serialize<S: Serializer>(b: &Vec<u8>, s: S) -> Result<S::Ok, S::Error> {
+    pub fn serialize<S: Serializer>(b: &[u8], s: S) -> Result<S::Ok, S::Error> {
         let hex: String = b.iter().map(|x| format!("{:02x}", x)).collect();
         s.serialize_str(&hex)
     }
@@ -93,7 +96,12 @@ pub fn disassemble_linear(code: &[u8], base: u64, bits: u32) -> Vec<Instruction>
 /// Recursive-descent disassembly from one or more entry points. Follows
 /// direct calls + jumps; stops at rets / indirect terminators. Deduplicates
 /// on address. Ordered by address in the returned vec.
-pub fn disassemble_recursive(code: &[u8], base: u64, entries: &[u64], bits: u32) -> Vec<Instruction> {
+pub fn disassemble_recursive(
+    code: &[u8],
+    base: u64,
+    entries: &[u64],
+    bits: u32,
+) -> Vec<Instruction> {
     use std::collections::{BTreeMap, VecDeque};
 
     let mut work: VecDeque<u64> = entries.iter().copied().collect();
@@ -104,17 +112,24 @@ pub fn disassemble_recursive(code: &[u8], base: u64, entries: &[u64], bits: u32)
         if seen.contains_key(&addr) {
             continue;
         }
-        let start = match (addr as i64 - base as i64).try_into().ok().filter(|off: &i64| *off >= 0) {
-            Some(off) if (off as usize) < code.len() => off as usize,
-            _ => continue,
-        };
+        if addr < base {
+            continue;
+        }
+        let start = (addr - base) as usize;
+        if start >= code.len() {
+            continue;
+        }
         let slice = &code[start..];
         let mut decoder = Decoder::with_ip(bits, slice, addr, DecoderOptions::NONE);
         let mut insn = IcedInsn::default();
         loop {
-            if !decoder.can_decode() { break; }
+            if !decoder.can_decode() {
+                break;
+            }
             decoder.decode_out(&mut insn);
-            if insn.is_invalid() { break; }
+            if insn.is_invalid() {
+                break;
+            }
             let converted = convert(&insn, code, base, &mut fmt);
             let ip = converted.address;
             if seen.contains_key(&ip) {
@@ -141,9 +156,9 @@ pub fn disassemble_recursive(code: &[u8], base: u64, entries: &[u64], bits: u32)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BasicBlock {
     pub start: u64,
-    pub end: u64,           // exclusive
-    pub instructions: Vec<u64>,   // addresses of insns in this block, in order
-    pub succs: Vec<u64>,          // successor block starts
+    pub end: u64,               // exclusive
+    pub instructions: Vec<u64>, // addresses of insns in this block, in order
+    pub succs: Vec<u64>,        // successor block starts
 }
 
 /// Build a CFG (list of basic blocks) from a set of decoded instructions.
@@ -158,10 +173,10 @@ pub fn build_cfg(insns: &[Instruction]) -> Vec<BasicBlock> {
     let mut leaders: BTreeSet<u64> = BTreeSet::new();
     leaders.insert(insns[0].address);
     for i in insns {
-        if let Some(t) = i.target {
-            if by_addr.contains_key(&t) {
-                leaders.insert(t);
-            }
+        if let Some(t) = i.target
+            && by_addr.contains_key(&t)
+        {
+            leaders.insert(t);
         }
         if i.is_jmp || i.is_cond_jmp || i.is_call {
             let ft = i.end();
@@ -185,7 +200,9 @@ pub fn build_cfg(insns: &[Instruction]) -> Vec<BasicBlock> {
         let mut end = leader;
         let mut succs = Vec::new();
         while cur < next_leader {
-            let Some(&i) = by_addr.get(&cur) else { break; };
+            let Some(&i) = by_addr.get(&cur) else {
+                break;
+            };
             instructions.push(cur);
             end = i.end();
             if i.is_ret {
@@ -201,7 +218,7 @@ pub fn build_cfg(insns: &[Instruction]) -> Vec<BasicBlock> {
                 if let Some(t) = i.target {
                     succs.push(t);
                 }
-                succs.push(i.end());  // fallthrough
+                succs.push(i.end()); // fallthrough
                 break;
             }
             cur = i.end();
@@ -211,7 +228,12 @@ pub fn build_cfg(insns: &[Instruction]) -> Vec<BasicBlock> {
         if succs.is_empty() && by_addr.contains_key(&next_leader) && end == next_leader {
             succs.push(next_leader);
         }
-        blocks.push(BasicBlock { start: leader, end, instructions, succs });
+        blocks.push(BasicBlock {
+            start: leader,
+            end,
+            instructions,
+            succs,
+        });
     }
     blocks
 }
@@ -221,10 +243,10 @@ pub fn build_cfg(insns: &[Instruction]) -> Vec<BasicBlock> {
 pub fn compute_xrefs(insns: &[Instruction]) -> std::collections::BTreeMap<u64, Vec<u64>> {
     let mut out: std::collections::BTreeMap<u64, Vec<u64>> = std::collections::BTreeMap::new();
     for i in insns {
-        if let Some(t) = i.target {
-            if i.is_call || i.is_jmp {
-                out.entry(t).or_default().push(i.address);
-            }
+        if let Some(t) = i.target
+            && (i.is_call || i.is_jmp)
+        {
+            out.entry(t).or_default().push(i.address);
         }
     }
     out
@@ -250,7 +272,10 @@ fn convert(insn: &IcedInsn, code: &[u8], base: u64, fmt: &mut IntelFormatter) ->
     let fc = insn.flow_control();
     let is_call = matches!(fc, FlowControl::Call | FlowControl::IndirectCall);
     let is_ret = matches!(fc, FlowControl::Return);
-    let is_uncond_jmp = matches!(fc, FlowControl::UnconditionalBranch | FlowControl::IndirectBranch);
+    let is_uncond_jmp = matches!(
+        fc,
+        FlowControl::UnconditionalBranch | FlowControl::IndirectBranch
+    );
     let is_cond_jmp = matches!(fc, FlowControl::ConditionalBranch);
 
     // Direct-branch target: first operand is an immediate branch target.
@@ -306,7 +331,9 @@ mod tests {
     #[test]
     fn direct_call_has_target() {
         // e8 05 00 00 00      call +5   (target: 0x100A)
-        let code = &[0xE8, 0x05, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90, 0x90, 0x90, 0xC3];
+        let code = &[
+            0xE8, 0x05, 0x00, 0x00, 0x00, 0x90, 0x90, 0x90, 0x90, 0x90, 0xC3,
+        ];
         let insns = disassemble_linear(code, 0x1000, 64);
         assert!(insns[0].is_call);
         assert_eq!(insns[0].target, Some(0x100A));
@@ -337,7 +364,9 @@ mod tests {
         // c3             (ret at 0x1005)
         // (data 0x1006 .. 0x1009)
         // 48 31 c0 c3    (xor rax,rax; ret at 0x100A)
-        let mut code = vec![0xE8, 0x05, 0x00, 0x00, 0x00, 0xC3, 0, 0, 0, 0, 0x48, 0x31, 0xC0, 0xC3];
+        let mut code = vec![
+            0xE8, 0x05, 0x00, 0x00, 0x00, 0xC3, 0, 0, 0, 0, 0x48, 0x31, 0xC0, 0xC3,
+        ];
         let insns = disassemble_recursive(&code, 0x1000, &[0x1000], 64);
         let addrs: Vec<u64> = insns.iter().map(|i| i.address).collect();
         assert!(addrs.contains(&0x1000), "should decode call");
@@ -357,11 +386,18 @@ mod tests {
         let code = &[0x74, 0x02, 0x90, 0xC3, 0x90, 0xC3];
         let insns = disassemble_linear(code, 0x1000, 64);
         let cfg = build_cfg(&insns);
-        assert!(cfg.len() >= 2, "expected at least 2 blocks, got {}", cfg.len());
+        assert!(
+            cfg.len() >= 2,
+            "expected at least 2 blocks, got {}",
+            cfg.len()
+        );
         let entry = &cfg[0];
         assert_eq!(entry.start, 0x1000);
         assert!(entry.succs.contains(&0x1004), "jcc target should be a succ");
-        assert!(entry.succs.contains(&0x1002), "fallthrough should be a succ");
+        assert!(
+            entry.succs.contains(&0x1002),
+            "fallthrough should be a succ"
+        );
     }
 
     #[test]

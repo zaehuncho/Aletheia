@@ -22,10 +22,10 @@
 //!   crates -- we own the parser exactly as the Python side does.
 //! - Honest limits documented on the type itself.
 
-pub mod pe;
+pub mod decompile;
 pub mod detect;
 pub mod disasm;
-pub mod decompile;
+pub mod pe;
 pub mod unpack;
 
 /// Crate-wide error type. Module errors convert into this.

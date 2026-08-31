@@ -2,7 +2,7 @@
   <img src="docs/brand/logo-wordmark.svg" alt="Aletheia" width="480">
 </p>
 
-[![CI](https://github.com/zaehuncho/Aletheia/actions/workflows/ci.yml/badge.svg)](https://github.com/zaehuncho/Aletheia/actions/workflows/ci.yml) &nbsp; [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) &nbsp; [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/) &nbsp; [![Rust MSVC](https://img.shields.io/badge/rust-stable--msvc-orange.svg)](https://www.rust-lang.org/) &nbsp; [![Tauri 2](https://img.shields.io/badge/tauri-2-24C8DB.svg)](https://tauri.app/)
+[![CI](https://github.com/zaehuncho/Aletheia/actions/workflows/ci.yml/badge.svg)](https://github.com/zaehuncho/Aletheia/actions/workflows/ci.yml) &nbsp; [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) &nbsp; [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/) &nbsp; [![Rust 1.98 MSVC](https://img.shields.io/badge/rust-1.98--msvc-orange.svg)](https://www.rust-lang.org/) &nbsp; [![Tauri 2](https://img.shields.io/badge/tauri-2-24C8DB.svg)](https://tauri.app/)
 
 **A defensive reverse-engineering workbench for Windows PEs.**
 **Triage → dynamic unpacking → import reconstruction → disassembly → SSA IR → decompilation → readable C-ish source.**
@@ -32,6 +32,7 @@ Same category as [PE-sieve](https://github.com/hasherezade/pe-sieve), [Scylla](h
 | **Dynamic Analysis** | Run the sample under our Win32 debugger with the three unpack levers active. Auto-wraps DLLs via `rundll32`. |
 
 Installers ship in every GitHub release (`Aletheia_x.y.z_x64-setup.exe` for NSIS, `Aletheia_x.y.z_x64_en-US.msi` for MSI).
+Current community builds are not Authenticode-signed, so Windows may show a SmartScreen warning. Verify the release's `SHA256SUMS.txt` before installing.
 
 ### The engine (Rust — `rust/aletheia-core/`)
 
@@ -45,7 +46,7 @@ Installers ship in every GitHub release (`Aletheia_x.y.z_x64-setup.exe` for NSIS
 
 ### The engine (Python — `aletheia/`, reference implementation)
 
-21 modules, 12,180 LoC, 387 pytest tests, 12 decompiler golden files.
+21 modules, 12,180 LoC, 389 pytest tests, 12 decompiler golden files.
 Same behavior as the Rust engine for the ported modules; **the full**
 **SSA-driven decompilation pipeline lives here** (`ir.py` + `dataflow.py` +
 `simplify.py` + `structuring.py` + `decompile.py`) and hasn't been ported
@@ -54,15 +55,17 @@ to Rust yet. See the module table in [`docs/python-engine.md`](docs/python-engin
 ### The hypervisor scaffold (C — `hv/`)
 
 Clean-room Intel VT-x/EPT + AMD-V/NPT VMI hypervisor for observing a
-sample from ring −1 (invisible to guest anti-debug). **Compiles clean**
-(43 KB `aletheia_hv.sys`, valid x64 kernel driver, NATIVE subsystem)
-but has never been signed, loaded, or run. See `hv/BRINGUP.md` for the
+sample from ring −1 (invisible to guest anti-debug). It is experimental
+source that has never been signed, loaded, or run. See `hv/BRINGUP.md` for the
 snapshotted-VM bring-up checklist and `hv/README.md` for the clean-room
 provenance rules (Intel SDM Vol 3 / AMD APM Vol 2 cited inline).
 
 ---
 
 ## Dynamic unpack — the three levers
+
+> [!WARNING]
+> Dynamic analysis runs the selected binary with your user privileges. Aletheia is a debugger, not a sandbox. Only use samples you are authorized to analyze, inside a disposable snapshotted VM.
 
 Beyond the classical write-then-execute detector, the Rust `unpack.rs`
 layer adds three orthogonal signals:
@@ -108,6 +111,9 @@ top-most center pane.
 ### CLI (Python)
 
 ```bash
+# Install the reference engine and full test dependencies
+python -m pip install -e ".[dev]"
+
 # 1. Static triage
 python aletheia.py suspect.exe
 
@@ -121,7 +127,7 @@ python aletheia.py benchmark C:\Windows\System32\notepad.exe --out bench/
 python aletheia.py ghidra-export project.json --out ghidra/
 
 # 5. Full test suite
-python -m pytest -q                                       # ~7s, 387 tests
+python -m pytest -q                                       # ~8s, 389 tests
 ```
 
 ### Engine, from Rust
@@ -167,7 +173,7 @@ Every heuristic that can lie says so on its output. The load-bearing ones:
 - **PDB** — public symbols only, no globals / types / lines / C++ demangling.
 - **Signatures** — structural predicates are heuristics, not proofs.
   Every match is cited on the return type.
-- **HV** — scaffold only. Compiles clean, never been signed or loaded.
+- **HV** — experimental scaffold only; never signed, loaded, or runtime-validated.
   See `hv/BRINGUP.md`. Do not `sc start` on a machine you care about.
 - **Dynamic-unpack layer** doesn't reach VMProtect Ultra or Themida Ultra.
   That's the HV's job once the scaffold matures.
@@ -188,7 +194,7 @@ rust/                        Native workbench + engine
 aletheia/                    Python reference implementation (21 modules)
 tools/                       Benchmark harness + Ghidra export
 viewer/                      Offline HTML analysis dashboard
-tests/                       387 tests, 12 golden files
+tests/                       389 tests, 12 golden files
   goldens/decompile/           pre-Rust behavior lock
 
 hv/                          Clean-room VT-x/EPT + SVM/NPT HV scaffold
@@ -200,16 +206,17 @@ CHANGELOG.md                 Release notes
 CONTRIBUTING.md              PR / issue guide
 SECURITY.md                  Vulnerability disclosure policy
 ROADMAP.md                   What's done, what's next
-.github/workflows/ci.yml     pytest on push (Windows-latest, Python 3.12)
+.github/workflows/ci.yml     Python, Rust, frontend, and publication-policy gates
 ```
 
 ---
 
 ## Status
 
-**v0.2.0** — Rust workbench released. Python engine locked by 12 golden
-files (regen via `ALETHEIA_UPDATE_GOLDENS=1`). CI green on every push
-(Windows-latest, Python 3.12).
+**v0.2.0** — current source version. Python engine locked by 12 golden
+files (regen via `ALETHEIA_UPDATE_GOLDENS=1`). CI validates Python, Rust,
+frontend, and publication policy on every push and pull request. A `v0.2.0`
+tag builds the MSI and NSIS installers and publishes SHA-256 checksums.
 
 ## License
 

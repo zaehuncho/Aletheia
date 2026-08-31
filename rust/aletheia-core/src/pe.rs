@@ -221,7 +221,7 @@ fn parse_bytes_inner(data: &[u8]) -> Result<PeInfo, PeError> {
 
     // Import table walk: data directory index 1.
     let (import_dlls, import_func_count) = if num_dd > 1 {
-        let imp_off = dd_off + 1 * 8;
+        let imp_off = dd_off + 8;
         if imp_off + 8 <= data.len() {
             let imp_rva = u32_le(data, imp_off);
             let imp_size = u32_le(data, imp_off + 4);
@@ -472,7 +472,11 @@ mod tests {
             *b = i as u8;
         }
         let h = shannon_entropy(&data);
-        assert!((h - 8.0).abs() < 1e-9, "uniform byte distribution -> ~8 bits, got {}", h);
+        assert!(
+            (h - 8.0).abs() < 1e-9,
+            "uniform byte distribution -> ~8 bits, got {}",
+            h
+        );
     }
 
     #[test]
@@ -508,7 +512,9 @@ mod tests {
             raw_ptr: 0x400,
             raw_size: 0x200,
             entropy: 0.0,
-            readable: true, writable: false, executable: true,
+            readable: true,
+            writable: false,
+            executable: true,
         };
         assert!(s.contains_rva(0x1000));
         assert!(s.contains_rva(0x11FF));
@@ -525,26 +531,24 @@ mod tests {
         buf[0x3C..0x40].copy_from_slice(&0x80u32.to_le_bytes());
         buf[0x80..0x84].copy_from_slice(b"PE\0\0");
         buf[0x84..0x86].copy_from_slice(&0x8664u16.to_le_bytes()); // machine=x64
-        buf[0x86..0x88].copy_from_slice(&2u16.to_le_bytes());      // n_sections=2
-        buf[0x94..0x96].copy_from_slice(&240u16.to_le_bytes());    // opt_size
-        buf[0x96..0x98].copy_from_slice(&0u16.to_le_bytes());      // characteristics
-        buf[0x98..0x9A].copy_from_slice(&0x20Bu16.to_le_bytes());  // PE32+
+        buf[0x86..0x88].copy_from_slice(&2u16.to_le_bytes()); // n_sections=2
+        buf[0x94..0x96].copy_from_slice(&240u16.to_le_bytes()); // opt_size
+        buf[0x96..0x98].copy_from_slice(&0u16.to_le_bytes()); // characteristics
+        buf[0x98..0x9A].copy_from_slice(&0x20Bu16.to_le_bytes()); // PE32+
         buf[0xA8..0xAC].copy_from_slice(&0x1000u32.to_le_bytes()); // entry_rva
         buf[0xB0..0xB8].copy_from_slice(&0x140000000u64.to_le_bytes()); // image_base
-        buf[0x104..0x108].copy_from_slice(&16u32.to_le_bytes());   // NumberOfRvaAndSizes
+        buf[0x104..0x108].copy_from_slice(&16u32.to_le_bytes()); // NumberOfRvaAndSizes
 
         // Section table at opt(0x98) + 240 = 0x188
         let sect = 0x188usize;
         // Section 1: ".text", vaddr 0x1000, vsize 0x500, raw_size 0x200, raw_ptr 0x400
         buf[sect..sect + 5].copy_from_slice(b".text");
-        buf[sect + 8..sect + 12].copy_from_slice(&0x500u32.to_le_bytes());   // vsize
+        buf[sect + 8..sect + 12].copy_from_slice(&0x500u32.to_le_bytes()); // vsize
         buf[sect + 12..sect + 16].copy_from_slice(&0x1000u32.to_le_bytes()); // vaddr
-        buf[sect + 16..sect + 20].copy_from_slice(&0x200u32.to_le_bytes());  // raw_size
-        buf[sect + 20..sect + 24].copy_from_slice(&0x400u32.to_le_bytes());  // raw_ptr
+        buf[sect + 16..sect + 20].copy_from_slice(&0x200u32.to_le_bytes()); // raw_size
+        buf[sect + 20..sect + 24].copy_from_slice(&0x400u32.to_le_bytes()); // raw_ptr
         // characteristics: RX
-        buf[sect + 36..sect + 40].copy_from_slice(
-            &(SCN_MEM_READ | SCN_MEM_EXECUTE).to_le_bytes(),
-        );
+        buf[sect + 36..sect + 40].copy_from_slice(&(SCN_MEM_READ | SCN_MEM_EXECUTE).to_le_bytes());
         // Section 2: ".data", vaddr 0x2000, vsize 0x300, raw_size 0x100, raw_ptr 0x600
         let sect2 = sect + 40;
         buf[sect2..sect2 + 5].copy_from_slice(b".data");
@@ -552,9 +556,7 @@ mod tests {
         buf[sect2 + 12..sect2 + 16].copy_from_slice(&0x2000u32.to_le_bytes());
         buf[sect2 + 16..sect2 + 20].copy_from_slice(&0x100u32.to_le_bytes());
         buf[sect2 + 20..sect2 + 24].copy_from_slice(&0x600u32.to_le_bytes());
-        buf[sect2 + 36..sect2 + 40].copy_from_slice(
-            &(SCN_MEM_READ | SCN_MEM_WRITE).to_le_bytes(),
-        );
+        buf[sect2 + 36..sect2 + 40].copy_from_slice(&(SCN_MEM_READ | SCN_MEM_WRITE).to_le_bytes());
 
         let info = parse_bytes(&buf);
         assert!(info.ok, "parse failed: {:?}", info.error);

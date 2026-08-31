@@ -8,10 +8,10 @@
 
     USAGE (inside a VM with the Windows Driver Kit installed):
       # from the repo's hv\ folder, in an elevated PowerShell:
-      .\build.ps1                     # compile + link (no sign)
-      .\build.ps1 -Sign               # compile + link + test-sign
+      .\build.ps1 -VmOnlyAcknowledged # compile + link (no sign)
+      .\build.ps1 -VmOnlyAcknowledged -Sign # compile + link + test-sign
       .\build.ps1 -Clean              # rm build\
-      .\build.ps1 -Verbose            # dump every cl.exe / link.exe line
+      .\build.ps1 -VmOnlyAcknowledged -Verbose # dump tool invocations
 
     REQUIRES: WDK 10 (or newer) installed under the standard location:
               C:\Program Files (x86)\Windows Kits\10
@@ -23,6 +23,7 @@
 param(
     [switch]$Sign,
     [switch]$Clean,
+    [switch]$VmOnlyAcknowledged,
     [string]$OutName = "aletheia_hv"
 )
 
@@ -33,6 +34,12 @@ $srcDir   = Join-Path $hvRoot "src"
 $incDir   = Join-Path $hvRoot "include"
 
 if ($Clean) { Remove-Item -Recurse -Force $buildDir -ErrorAction SilentlyContinue; Write-Host "clean." -Fore Cyan; return }
+if (-not $VmOnlyAcknowledged) {
+    throw "Refusing to build a kernel hypervisor without -VmOnlyAcknowledged. Build, sign, load, and test this driver only inside a disposable snapshotted VM."
+}
+if ($OutName -notmatch '^[A-Za-z0-9][A-Za-z0-9_.-]*$') {
+    throw "OutName must be a simple file name, not a path."
+}
 New-Item -ItemType Directory -Force -Path $buildDir | Out-Null
 
 # ---- Locate the WDK ----------------------------------------------------------
@@ -93,7 +100,7 @@ $env:LIB     = "$msvcLib;$kmLib"
 # Kernel-mode flags per the WDK conventions.
 $clFlags = @(
     "/nologo", "/c",
-    "/W3", "/WX-", "/GS-", "/Gy", "/Zi",
+    "/W4", "/WX", "/GS", "/Gy", "/Zi", "/sdl", "/Qspectre", "/guard:cf", "/ZH:SHA_256",
     "/D_AMD64_", "/DAMD64", "/D_WIN64", "/DKERNEL_MODE=1",
     "/DPOOL_NX_OPTIN=1", "/DNDEBUG", "/kernel"
 )
@@ -127,6 +134,7 @@ $linkFlags = @(
     "/nologo", "/DRIVER",
     "/SUBSYSTEM:NATIVE,6.01",
     "/MACHINE:X64", "/DEBUG", "/OPT:REF", "/OPT:ICF",
+    "/DYNAMICBASE", "/HIGHENTROPYVA", "/NXCOMPAT", "/GUARD:CF", "/INTEGRITYCHECK",
     "/ENTRY:DriverEntry",
     "/NODEFAULTLIB", "/INCREMENTAL:NO", "/RELEASE",
     "/OUT:$sys",
@@ -151,7 +159,7 @@ if ($Sign) {
             -KeyAlgorithm RSA -KeyLength 2048 -HashAlgorithm SHA256 | Out-Null
         $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq "CN=$certName" } | Select-Object -First 1
     }
-    & $signtool.FullName sign /fd SHA256 /sha1 $cert.Thumbprint /t http://timestamp.digicert.com $sys
+    & $signtool.FullName sign /fd SHA256 /sha1 $cert.Thumbprint /tr https://timestamp.digicert.com /td SHA256 $sys
     if ($LASTEXITCODE -ne 0) { throw "signtool sign failed (exit $LASTEXITCODE)" }
     Write-Host "[sign] test-signed OK" -Fore Green
 }

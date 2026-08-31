@@ -6,7 +6,7 @@
 - Rust `decompile.rs` — lightweight lowering with if-then triangle collapse.
 - Rust `unpack.rs` — Win32 Debug API single-stepper + three levers (anti-anti-debug PEB patches, ntdll API hooks, guard-page write tracking) + in-image packer-target predicate + auto-rundll32 wrap for DLLs. Live-verified: UPX canary detected in 14 ms.
 - Tauri workbench (`rust/aletheia-app/`) with drag-and-drop pane reorder, resizable persisted splits, Ctrl+F find, custom chrome, MSI + NSIS installers.
-- HV scaffold (`hv/`) brought to a clean compile (43 KB x64 kernel driver, PE-valid). Not signed, not loaded — see `hv/BRINGUP.md` for VM path.
+- HV scaffold (`hv/`) has a VM-gated WDK build path. It is not signed, loaded, or runtime-validated — see `hv/BRINGUP.md`.
 - Test canary + benign write-then-execute demo (`test-corpus/canary/`).
 
 **Next up:**

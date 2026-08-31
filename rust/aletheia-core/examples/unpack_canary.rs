@@ -14,10 +14,16 @@ fn main() {
     // relative to the workspace root.
     let manifest_dir = env!("CARGO_MANIFEST_DIR"); // rust/aletheia-core
     let candidate = std::path::Path::new(manifest_dir)
-        .join("..").join("..")
-        .join("test-corpus").join("canary").join("target").join("release")
+        .join("..")
+        .join("..")
+        .join("test-corpus")
+        .join("canary")
+        .join("target")
+        .join("release")
         .join("aletheia_canary.exe");
-    let canary = candidate.canonicalize().unwrap_or_else(|_| candidate.clone());
+    let canary = candidate
+        .canonicalize()
+        .unwrap_or_else(|_| candidate.clone());
     println!("[demo] canary path: {}", canary.display());
     if !canary.exists() {
         eprintln!("[demo] canary not built. From repo root:");
@@ -27,7 +33,11 @@ fn main() {
 
     // Quote in case the path has spaces.
     let cmd = format!("\"{}\"", canary.display());
-    let opts = UnpackOptions { max_steps: 200_000, timeout_ms: 15_000 };
+    let opts = UnpackOptions {
+        max_steps: 200_000,
+        timeout_ms: 15_000,
+        ..Default::default()
+    };
 
     let started = std::time::Instant::now();
     let r = match run_unpack(&cmd, &opts) {
@@ -43,7 +53,10 @@ fn main() {
     println!("[demo] detected:   {}", r.detected);
     println!("[demo] main_base:  {:#x}", r.main_base);
     if let Some(oep) = r.oep {
-        println!("[demo] OEP:        {:#x} (outside every loaded module)", oep);
+        println!(
+            "[demo] OEP:        {:#x} (outside every loaded module)",
+            oep
+        );
         println!("[demo] OEP - main: {:#x}", oep.wrapping_sub(r.main_base));
     } else {
         println!("[demo] OEP:        (none)");

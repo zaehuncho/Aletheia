@@ -1,12 +1,12 @@
 [package]
 name = "aletheia-app"
-version = "0.1.0"
+version = "0.2.0"
 description = "Aletheia analyst workbench - Tauri front-end for the aletheia-core engine."
-authors = ["Isaiah <idiahjackson@gmail.com>"]
+authors = ["zaehuncho"]
 license = "MIT"
 repository = "https://github.com/zaehuncho/Aletheia"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.88"
 
 [lib]
 name = "aletheia_app_lib"

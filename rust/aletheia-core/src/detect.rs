@@ -48,7 +48,10 @@ impl Verdict {
 const SECTION_SIGS: &[(&str, &[&str])] = &[
     ("UPX", &["upx0", "upx1", "upx2", "upx!"]),
     ("VMProtect", &[".vmp0", ".vmp1", ".vmp2"]),
-    ("Themida/WinLicense", &[".themida", ".winlice", ".winlicen", ".taz"]),
+    (
+        "Themida/WinLicense",
+        &[".themida", ".winlice", ".winlicen", ".taz"],
+    ),
     ("Enigma Protector", &[".enigma1", ".enigma2"]),
     ("ASPack", &[".aspack", ".adata"]),
     ("Petite", &[".petite"]),
@@ -62,9 +65,8 @@ const SECTION_SIGS: &[(&str, &[&str])] = &[
 
 /// Section names a normal MSVC/GCC/clang binary uses; anything else is a mild flag.
 const NORMAL_NAMES: &[&str] = &[
-    ".text", ".rdata", ".data", ".pdata", ".rsrc", ".reloc", ".bss", ".tls",
-    ".idata", ".edata", ".xdata", ".00cfg", ".gfids", ".didat", ".debug",
-    ".voltbl", ".sxdata", ".textbss", ".cormeta",
+    ".text", ".rdata", ".data", ".pdata", ".rsrc", ".reloc", ".bss", ".tls", ".idata", ".edata",
+    ".xdata", ".00cfg", ".gfids", ".didat", ".debug", ".voltbl", ".sxdata", ".textbss", ".cormeta",
     "fothk", "_rdata", "protdata", ".retplne", ".giats", ".gehcont", "cpadinfo", "malloc_h",
 ];
 
@@ -95,14 +97,14 @@ pub fn analyze(pe: &PeInfo, raw: Option<&[u8]>) -> Verdict {
     }
 
     // Lethe's own container magic.
-    if let Some(bytes) = raw {
-        if contains_subsequence(bytes, b"LETHE01") {
-            if packer.is_none() {
-                packer = Some("Lethe".to_string());
-            }
-            signals.push("Lethe container magic (LETHE01) present".to_string());
-            score += 0.9;
+    if let Some(bytes) = raw
+        && contains_subsequence(bytes, b"LETHE01")
+    {
+        if packer.is_none() {
+            packer = Some("Lethe".to_string());
         }
+        signals.push("Lethe container magic (LETHE01) present".to_string());
+        score += 0.9;
     }
 
     if pe.is_dotnet {
@@ -118,7 +120,11 @@ pub fn analyze(pe: &PeInfo, raw: Option<&[u8]>) -> Verdict {
     if !high.is_empty() {
         let worst = high
             .iter()
-            .max_by(|a, b| a.entropy.partial_cmp(&b.entropy).unwrap_or(std::cmp::Ordering::Equal))
+            .max_by(|a, b| {
+                a.entropy
+                    .partial_cmp(&b.entropy)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .unwrap();
         signals.push(format!(
             "{} high-entropy section(s) (max {:.2} bits/byte in '{}')",
@@ -224,9 +230,7 @@ fn contains_subsequence(haystack: &[u8], needle: &[u8]) -> bool {
     if needle.is_empty() {
         return true;
     }
-    haystack
-        .windows(needle.len())
-        .any(|w| w == needle)
+    haystack.windows(needle.len()).any(|w| w == needle)
 }
 
 // ---------------------------------------------------------------------------
@@ -240,18 +244,34 @@ mod tests {
 
     fn empty_pe() -> PeInfo {
         PeInfo {
-            ok: true, error: None, arch: "x64".into(), is_dll: false, is_dotnet: false,
-            entry_rva: 0x1000, image_base: 0x140000000, machine: 0x8664, n_sections: 0,
-            sections: vec![], entry_section: None, import_dlls: vec![],
-            import_func_count: 0, overall_entropy: 0.0,
+            ok: true,
+            error: None,
+            arch: "x64".into(),
+            is_dll: false,
+            is_dotnet: false,
+            entry_rva: 0x1000,
+            image_base: 0x140000000,
+            machine: 0x8664,
+            n_sections: 0,
+            sections: vec![],
+            entry_section: None,
+            import_dlls: vec![],
+            import_func_count: 0,
+            overall_entropy: 0.0,
         }
     }
 
     fn sect(name: &str, w: bool, x: bool, entropy: f64, raw: u32, v: u32) -> Section {
         Section {
-            name: name.to_string(), vaddr: 0x1000, vsize: v, raw_ptr: 0x400,
-            raw_size: raw, entropy,
-            readable: true, writable: w, executable: x,
+            name: name.to_string(),
+            vaddr: 0x1000,
+            vsize: v,
+            raw_ptr: 0x400,
+            raw_size: raw,
+            entropy,
+            readable: true,
+            writable: w,
+            executable: x,
         }
     }
 
@@ -259,9 +279,9 @@ mod tests {
     fn clean_binary_reads_clean() {
         let mut pe = empty_pe();
         pe.sections = vec![
-            sect(".text",  false, true,  5.5, 4096, 4096),
+            sect(".text", false, true, 5.5, 4096, 4096),
             sect(".rdata", false, false, 4.5, 2048, 2048),
-            sect(".data",  true,  false, 3.5, 1024, 1024),
+            sect(".data", true, false, 3.5, 1024, 1024),
         ];
         pe.entry_section = Some(".text".into());
         pe.import_dlls = vec!["kernel32.dll".into(), "user32.dll".into()];
@@ -276,7 +296,7 @@ mod tests {
         let mut pe = empty_pe();
         pe.sections = vec![
             sect("UPX0", false, false, 0.0, 0, 4096),
-            sect("UPX1", true,  true,  7.9, 4096, 4096),
+            sect("UPX1", true, true, 7.9, 4096, 4096),
         ];
         pe.entry_section = Some("UPX1".into());
         pe.import_func_count = 3;

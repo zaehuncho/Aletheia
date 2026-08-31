@@ -44,7 +44,7 @@ what a heuristic can and can't do beats a confident false positive.
 python -m venv .venv
 .\.venv\Scripts\activate                 # Windows
 python -m pip install -e ".[dev]"        # from pyproject if present, else nothing to install
-python -m pytest -q                      # 387 tests, ~7s
+python -m pytest -q                      # 389 tests, ~8s
 ```
 
 Zero required runtime deps beyond stdlib. `capstone` is optional (the
@@ -66,21 +66,24 @@ For the workbench UI:
 
 ```bash
 cd rust/aletheia-app
-npm install
-cargo tauri dev                           # dev with hot reload
-cargo tauri build                         # release .exe + MSI + NSIS installer
+npm ci
+npm run tauri -- dev                      # dev with hot reload
+npm run bundle                            # release .exe + MSI + NSIS installer
 ```
 
-The Tauri CLI is a Rust crate: `cargo install tauri-cli --version "^2.0"`.
+The Tauri CLI is pinned in `package-lock.json`; do not install a global copy for release builds.
 
 ### HV side
 
-The `hv/` tree is a clean-room defensive hypervisor scaffold. It
-compiles here (WDK 10 + VS 2022) but must never be signed or loaded
-outside a snapshotted VM. See `hv/BRINGUP.md` for the checklist and
+The `hv/` tree is a clean-room defensive hypervisor scaffold. Build,
+sign, load, and test it only inside a snapshotted VM with WDK 10 and
+VS 2022. See `hv/BRINGUP.md` for the checklist and
 `hv/README.md` for the clean-room provenance rules — TL;DR: cite the
 SDM / APM section for every constant; never consult a proprietary or
 anti-cheat HV source.
+
+Inside that VM, `./build.ps1 -VmOnlyAcknowledged` makes the environment
+boundary explicit. The driver is not part of normal desktop release artifacts.
 
 ## Coding conventions
 

@@ -30,6 +30,17 @@ type EngineInfo = { engine: string; version: string; target_arch: string; target
 type Toast = { id: number; kind: "error" | "info" | "ok"; text: string }
 const RECENT_KEY = "aletheia.recent"
 
+function loadRecent(): string[] {
+    try {
+        const value = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]")
+        return Array.isArray(value)
+            ? value.filter((item): item is string => typeof item === "string").slice(0, 8)
+            : []
+    } catch {
+        return []
+    }
+}
+
 // ==========================================================================
 // Small helpers
 // ==========================================================================
@@ -108,29 +119,28 @@ export default function App() {
     const [phase, setPhase] = useState<string>("")
     const [engine, setEngine] = useState<EngineInfo | null>(null)
     const [toasts, setToasts] = useState<Toast[]>([])
-    const [recent, setRecent] = useState<string[]>([])
+    const [recent, setRecent] = useState<string[]>(loadRecent)
     const [dropActive, setDropActive] = useState(false)
     const toastId = useRef(0)
 
     // Engine info + recent files (per-viewer localStorage; not shared)
     useEffect(() => {
         invoke<EngineInfo>("engine_info").then(setEngine).catch(() => setEngine(null))
-        try { setRecent(JSON.parse(localStorage.getItem(RECENT_KEY) || "[]")) } catch { /* empty */ }
     }, [])
 
-    function toast(kind: Toast["kind"], text: string, ttl_ms = 4200) {
+    const toast = useCallback((kind: Toast["kind"], text: string, ttl_ms = 4200) => {
         const id = ++toastId.current
         setToasts(t => [...t, { id, kind, text }])
         setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), ttl_ms)
-    }
+    }, [])
 
-    function pushRecent(p: string) {
+    const pushRecent = useCallback((p: string) => {
         setRecent(prev => {
             const next = [p, ...prev.filter(x => x !== p)].slice(0, 8)
             try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)) } catch { /* empty */ }
             return next
         })
-    }
+    }, [])
 
     const runAnalyze = useCallback(async (overridePath?: string) => {
         const p = overridePath ?? path
@@ -165,9 +175,9 @@ export default function App() {
         } finally {
             setBusy(false); setPhase("")
         }
-    }, [path])
+    }, [path, pushRecent, toast])
 
-    async function openAndAnalyze() {
+    const openAndAnalyze = useCallback(async () => {
         try {
             const p = await openDialog({
                 multiple: false, directory: false,
@@ -175,7 +185,7 @@ export default function App() {
             })
             if (typeof p === "string") { setPath(p); runAnalyze(p) }
         } catch (e) { toast("error", String(e)) }
-    }
+    }, [runAnalyze, toast])
 
     // Drag-and-drop a file onto the window (Tauri v2 drag-drop event)
     useEffect(() => {
@@ -201,7 +211,7 @@ export default function App() {
         }
         window.addEventListener("keydown", onKey)
         return () => window.removeEventListener("keydown", onKey)
-    }, [runAnalyze])
+    }, [openAndAnalyze, runAnalyze])
 
     return (
         <div className={"h-screen flex flex-col bg-[var(--color-al-bg)] text-[var(--color-al-text)] " + (dropActive ? "drop-active" : "")}
@@ -778,7 +788,6 @@ function Center({ disasm, busy, loadedPath, selectedFn }: {
     useEffect(() => {
         const el = containerRef.current
         if (!el) return
-        setContainerH(el.clientHeight)
         const ro = new ResizeObserver(entries => {
             for (const e of entries) setContainerH(e.contentRect.height)
         })
@@ -789,11 +798,8 @@ function Center({ disasm, busy, loadedPath, selectedFn }: {
     const MIN_BOTTOM = 120
     const SPLITTER_H = 4
     const maxTopH = Math.max(MIN_TOP, containerH - MIN_BOTTOM - SPLITTER_H)
-    // Also clamp whenever the container shrinks so a resized window doesn't
-    // strand topH above the new maximum.
-    useEffect(() => {
-        if (containerH > 0) setTopH(h => clamp(h, MIN_TOP, maxTopH))
-    }, [containerH, maxTopH])
+    // Clamp for rendering so a window resize cannot strand the bottom pane.
+    const renderedTopH = containerH > 0 ? clamp(topH, MIN_TOP, maxTopH) : topH
 
     const disasmRight = (
         <div className="flex items-center gap-3 ml-auto">
@@ -838,7 +844,7 @@ function Center({ disasm, busy, loadedPath, selectedFn }: {
     // sizes wrong — scrollbars disappear and the drag feels non-linear.
     return (
         <div ref={containerRef} className="flex flex-col min-h-0 h-full">
-            <div style={{ height: topH, flexShrink: 0 }} className="min-h-0 flex flex-col">
+            <div style={{ height: renderedTopH, flexShrink: 0 }} className="min-h-0 flex flex-col">
                 {decompileOnTop ? decompileNode : disasmNode}
             </div>
             <Splitter direction="row" onDrag={d => setTopH(h => clamp(h + d, MIN_TOP, maxTopH))} />
@@ -860,7 +866,6 @@ function renderHighlighted(
     text: string,
     needle: string,
     currentIdx: number,
-    setCurrentRef: (el: HTMLElement | null) => void,
 ): React.ReactNode {
     if (!needle) return text
     const nodes: React.ReactNode[] = []
@@ -880,7 +885,7 @@ function renderHighlighted(
         nodes.push(
             <mark
                 key={key++}
-                ref={isCurrent ? setCurrentRef : undefined}
+                data-current-match={isCurrent ? "true" : undefined}
                 className={
                     isCurrent
                         ? "bg-[var(--color-al-accent)] text-[var(--color-al-surface)] rounded-sm outline outline-1 outline-[var(--color-al-accent-hi)]"
@@ -915,18 +920,26 @@ function DecompilePane({ path, rva, query, matchIdx, onCount }: {
     path: string | null; rva: number | null; query?: string
     matchIdx?: number; onCount?: (n: number) => void
 }) {
-    const [d, setD] = useState<Decompiled | null>(null)
-    const [busy, setBusy] = useState(false)
-    const [err, setErr] = useState<string | null>(null)
-    const currentMatchRef = useRef<HTMLElement | null>(null)
+    const requestKey = path && rva != null ? `${path}\u0000${rva}` : null
+    const [result, setResult] = useState<{
+        key: string; data?: Decompiled; error?: string
+    } | null>(null)
+    const outputRef = useRef<HTMLDivElement | null>(null)
 
     // Auto-fetch whenever the loaded file or selected function changes.
     useEffect(() => {
-        if (!path || rva == null) { setD(null); return }
-        setBusy(true); setErr(null); setD(null)
+        if (!requestKey || !path || rva == null) return
+        let cancelled = false
         invoke<Decompiled>("decompile_at", { path, addr: rva, count: 400 })
-            .then(setD).catch(e => setErr(String(e))).finally(() => setBusy(false))
-    }, [path, rva])
+            .then(data => { if (!cancelled) setResult({ key: requestKey, data }) })
+            .catch(error => { if (!cancelled) setResult({ key: requestKey, error: String(error) }) })
+        return () => { cancelled = true }
+    }, [path, requestKey, rva])
+
+    const currentResult = result?.key === requestKey ? result : null
+    const d = currentResult?.data ?? null
+    const err = currentResult?.error ?? null
+    const busy = requestKey !== null && currentResult === null
 
     // Compute + report match count whenever source or query changes.
     const src = d?.source ?? ""
@@ -936,7 +949,8 @@ function DecompilePane({ path, rva, query, matchIdx, onCount }: {
 
     // Scroll current match into view when matchIdx changes.
     useEffect(() => {
-        currentMatchRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" })
+        outputRef.current?.querySelector<HTMLElement>('[data-current-match="true"]')
+            ?.scrollIntoView({ block: "nearest", behavior: "smooth" })
     }, [matchIdx, total])
 
     if (!path || rva == null) {
@@ -953,11 +967,10 @@ function DecompilePane({ path, rva, query, matchIdx, onCount }: {
     if (!d) return <EmptyPane icon="sparkle" msg="No decompile output." />
 
     const rendered: React.ReactNode = q
-        ? renderHighlighted(src, q, (matchIdx ?? 0) % Math.max(1, total),
-            (el) => { currentMatchRef.current = el })
+        ? renderHighlighted(src, q, (matchIdx ?? 0) % Math.max(1, total))
         : src
     return (
-        <div className="h-full overflow-auto">
+        <div ref={outputRef} className="h-full overflow-auto">
             <pre className="p-3 text-[12px] leading-snug mono text-[var(--color-al-text)] whitespace-pre">
 {rendered}
             </pre>
@@ -1136,7 +1149,7 @@ function OpTokens({ text }: { text: string }) {
     const nodes: React.ReactNode[] = []
     // Tokenize on identifiers, hex numbers, and single symbols. Keeping
     // whitespace + memory brackets so the render mirrors capstone/iced output.
-    const re = /(0x[0-9a-fA-F]+|[a-zA-Z_][a-zA-Z_0-9]*|\s+|[\[\]\+\-\*,\(\)])/g
+    const re = /(0x[0-9a-fA-F]+|[a-zA-Z_][a-zA-Z_0-9]*|\s+|\[|\]|\+|-|\*|,|\(|\))/g
     let m: RegExpExecArray | null
     let key = 0
     let inMem = 0
@@ -1166,15 +1179,14 @@ function OpTokens({ text }: { text: string }) {
 
 function Disasm({ disasm, query, matchIdx }: { disasm: DisasmView | null; query?: string; matchIdx?: number }) {
     const rowRefs = useRef<Array<HTMLDivElement | null>>([])
-    if (!disasm) return <EmptyPane icon="cpu" msg="Analyze a binary to populate." />
-    const blockStarts = new Set(disasm.blocks.map(b => b.start))
+    const blockStarts = new Set(disasm?.blocks.map(b => b.start) ?? [])
     const q = (query || "").trim().toLowerCase()
     // Index list of matching instruction positions (into disasm.instructions).
     // Kept — even in highlight-all mode — so the parent knows how many hits
     // exist and can drive jump-to-match navigation via matchIdx.
     const matches: number[] = []
     if (q) {
-        disasm.instructions.forEach((i, idx) => {
+        disasm?.instructions.forEach((i, idx) => {
             if (addr(i.address).toLowerCase().includes(q)
                 || i.bytes.toLowerCase().includes(q)
                 || i.mnemonic.toLowerCase().includes(q)
@@ -1190,6 +1202,7 @@ function Disasm({ disasm, query, matchIdx }: { disasm: DisasmView | null; query?
         const el = rowRefs.current[currentAbs]
         if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" })
     }, [currentAbs])
+    if (!disasm) return <EmptyPane icon="cpu" msg="Analyze a binary to populate." />
     const matchSet = new Set(matches)
     return (
         <div className="mono text-xs overflow-auto h-full selectable-text zebra">
@@ -1223,14 +1236,13 @@ function Disasm({ disasm, query, matchIdx }: { disasm: DisasmView | null; query?
 }
 
 // Small hook: given a query and a live count, return a bounded match index +
-// navigation callbacks. Resets to 0 whenever the query changes.
+// navigation callbacks. The exposed index is always bounded by the live count.
 function useMatchNav(query: string, count: number) {
     const [idx, setIdx] = useState(0)
-    useEffect(() => { setIdx(0) }, [query])
-    useEffect(() => { if (idx >= count) setIdx(0) }, [count, idx])
+    const boundedIdx = query && count ? idx % count : 0
     const next = useCallback(() => setIdx(i => count ? (i + 1) % count : 0), [count])
     const prev = useCallback(() => setIdx(i => count ? (i - 1 + count) % count : 0), [count])
-    return { idx, next, prev }
+    return { idx: boundedIdx, next, prev }
 }
 
 // Compute the count of Disasm matches for a query, cheap linear scan matching
@@ -1522,6 +1534,10 @@ function DynamicInside({ path, isDll }: { path: string | null; isDll: boolean })
 
     async function run() {
         if (!path) return
+        const confirmed = window.confirm(
+            "Dynamic analysis executes the selected file. Continue only inside a disposable, snapshotted VM. Aletheia is a debugger, not a sandbox."
+        )
+        if (!confirmed) return
         setBusy(true); setErr(null); setResult(null)
         try {
             const r = await invoke<UnpackResult>("run_unpack", { path, timeoutMs: 15000, maxSteps: 200000 })
@@ -1539,6 +1555,9 @@ function DynamicInside({ path, isDll }: { path: string | null; isDll: boolean })
     return (
         <div className="p-3 text-xs space-y-3">
             <div className="text-[var(--color-al-text-mute)] leading-relaxed">
+                <span className="block mb-2 text-[var(--color-al-warn)] font-semibold">
+                    VM ONLY: this executes the selected file. Aletheia is not a sandbox.
+                </span>
                 Spawns the binary under a Win32 debugger and single-steps from
                 its entry point. Fires when execution reaches memory that is
                 <span className="mono text-[var(--color-al-text)]"> MEM_PRIVATE + PAGE_EXECUTE_*</span>
@@ -1622,4 +1641,3 @@ type RunEvent =
     | { kind: "ProtectFlipToX"; addr: number; size: number; old_protect: number; new_protect: number; dumped: string }
     | { kind: "ThreadFromNonImage"; start: number }
     | { kind: "Wrote"; page: number }
-

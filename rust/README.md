@@ -35,7 +35,7 @@ cargo build                    # workspace: aletheia-core + aletheia-app
 cargo test                     # runs all Rust tests
 
 cd aletheia-app
-npm install                    # one-time
+npm ci                         # locked dependencies
 npm run build                  # produces dist/ (Vite)
 cargo tauri dev                # launches the desktop window
 cargo tauri build              # produces a shipping .exe + installer

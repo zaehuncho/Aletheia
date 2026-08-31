@@ -19,11 +19,12 @@
  * hv.h. Everything VMX-architectural (control-bit adjustment, VMCS field population, EPT table
  * construction, the exit dispatcher) lives in those units.
  *
- * CANNOT BE BUILT, LOADED, OR RUN IN THIS ENVIRONMENT. It targets Windows x64 kernel mode on
- * real Intel VT-x + EPT silicon. Every unverified decision is marked "// TODO(hv):".
+ * BUILD, SIGN, LOAD, AND TEST ONLY INSIDE A SNAPSHOTTED VM. It targets Windows x64 kernel mode
+ * on virtualization-capable hardware. Every unverified decision is marked "// TODO(hv):".
  */
 
 #include "hv.h"
+#include <wdmsec.h>
 
 /* ptrdiff / offset helpers already pulled in via ntddk.h (arch.h -> ntddk.h). */
 
@@ -45,11 +46,22 @@ HV_STATE g_hv;
 /* Custom device type in the vendor-reserved range (SDM-independent; WDK IOCTL convention). */
 #define ALETHEIA_DEVICE_TYPE    0x8000u
 
-#define IOCTL_ALETHEIA_START     CTL_CODE(ALETHEIA_DEVICE_TYPE, 0x800, METHOD_BUFFERED, FILE_ANY_ACCESS)
-#define IOCTL_ALETHEIA_STOP      CTL_CODE(ALETHEIA_DEVICE_TYPE, 0x801, METHOD_BUFFERED, FILE_ANY_ACCESS)
-#define IOCTL_ALETHEIA_QUERY     CTL_CODE(ALETHEIA_DEVICE_TYPE, 0x802, METHOD_BUFFERED, FILE_ANY_ACCESS)
-#define IOCTL_ALETHEIA_READ_GPA  CTL_CODE(ALETHEIA_DEVICE_TYPE, 0x803, METHOD_BUFFERED, FILE_ANY_ACCESS)
-#define IOCTL_ALETHEIA_DRAIN     CTL_CODE(ALETHEIA_DEVICE_TYPE, 0x804, METHOD_BUFFERED, FILE_ANY_ACCESS)
+/*
+ * Never expose the control plane through FILE_ANY_ACCESS.  START/STOP and
+ * physical-memory reads require a handle opened for both read and write;
+ * status/event reads require read access.  IoCreateDeviceSecure below also
+ * restricts opening the device to SYSTEM and elevated administrators.
+ */
+#define ALETHEIA_CONTROL_ACCESS  (FILE_READ_ACCESS | FILE_WRITE_ACCESS)
+#define IOCTL_ALETHEIA_START     CTL_CODE(ALETHEIA_DEVICE_TYPE, 0x800, METHOD_BUFFERED, ALETHEIA_CONTROL_ACCESS)
+#define IOCTL_ALETHEIA_STOP      CTL_CODE(ALETHEIA_DEVICE_TYPE, 0x801, METHOD_BUFFERED, ALETHEIA_CONTROL_ACCESS)
+#define IOCTL_ALETHEIA_QUERY     CTL_CODE(ALETHEIA_DEVICE_TYPE, 0x802, METHOD_BUFFERED, FILE_READ_ACCESS)
+#define IOCTL_ALETHEIA_READ_GPA  CTL_CODE(ALETHEIA_DEVICE_TYPE, 0x803, METHOD_BUFFERED, ALETHEIA_CONTROL_ACCESS)
+#define IOCTL_ALETHEIA_DRAIN     CTL_CODE(ALETHEIA_DEVICE_TYPE, 0x804, METHOD_BUFFERED, FILE_READ_ACCESS)
+
+/* Stable class GUID used only to attach the control-device security policy. */
+static const GUID ALETHEIA_DEVICE_CLASS_GUID =
+    { 0x797e1c2a, 0xd487, 0x4cf7, { 0xa5, 0x8c, 0x39, 0x7b, 0x53, 0x7d, 0x14, 0xe1 } };
 
 /* IOCTL_ALETHEIA_QUERY output. */
 typedef struct _ALETHEIA_STATUS_OUT {
@@ -83,6 +95,19 @@ _Dispatch_type_(IRP_MJ_DEVICE_CONTROL)
 DRIVER_DISPATCH         HvDispatchDeviceControl;
 
 static NTSTATUS         HvStatusToNtStatus(HV_STATUS s);
+
+/* Sensitive operations require an enabled SeDebugPrivilege even after the
+ * device ACL has restricted the caller to SYSTEM/elevated administrators. */
+static BOOLEAN HvCallerMayControl(_In_ PIRP Irp)
+{
+    LUID privilege;
+
+    if (Irp->RequestorMode == KernelMode)
+        return TRUE;
+
+    privilege = RtlConvertLongToLuid(SE_DEBUG_PRIVILEGE);
+    return SeSinglePrivilegeCheck(privilege, Irp->RequestorMode);
+}
 
 /* ====================================================================================== */
 /*  Low-level allocation helpers.                                                           */
@@ -679,10 +704,18 @@ NTSTATUS HvDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP 
     switch (stack->Parameters.DeviceIoControl.IoControlCode) {
 
     case IOCTL_ALETHEIA_START:
+        if (!HvCallerMayControl(Irp)) {
+            nt = STATUS_PRIVILEGE_NOT_HELD;
+            break;
+        }
         nt = HvStatusToNtStatus(hv_virtualize_all_processors());
         break;
 
     case IOCTL_ALETHEIA_STOP:
+        if (!HvCallerMayControl(Irp)) {
+            nt = STATUS_PRIVILEGE_NOT_HELD;
+            break;
+        }
         nt = HvStatusToNtStatus(hv_devirtualize_all_processors());
         break;
 
@@ -707,6 +740,10 @@ NTSTATUS HvDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP 
         break;
 
     case IOCTL_ALETHEIA_READ_GPA:
+        if (!HvCallerMayControl(Irp)) {
+            nt = STATUS_PRIVILEGE_NOT_HELD;
+            break;
+        }
         if (in_len < sizeof(ALETHEIA_READ_GPA_IN) || buffer == NULL) {
             nt = STATUS_BUFFER_TOO_SMALL;
             break;
@@ -714,7 +751,8 @@ NTSTATUS HvDispatchDeviceControl(_In_ PDEVICE_OBJECT DeviceObject, _Inout_ PIRP 
         {
             /* Copy the request out before we overwrite the shared buffer with the result. */
             ALETHEIA_READ_GPA_IN req = *(ALETHEIA_READ_GPA_IN *)buffer;
-            if (req.length == 0 || req.length > ALETHEIA_READ_MAX || req.length > out_len) {
+            if (req.reserved0 != 0 || req.length == 0 ||
+                req.length > ALETHEIA_READ_MAX || req.length > out_len) {
                 nt = STATUS_INVALID_PARAMETER;
                 break;
             }
@@ -785,6 +823,7 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING Regi
 {
     UNICODE_STRING dev_name = RTL_CONSTANT_STRING(ALETHEIA_DEVICE_NAME);
     UNICODE_STRING symlink  = RTL_CONSTANT_STRING(ALETHEIA_SYMLINK_NAME);
+    UNICODE_STRING sddl     = RTL_CONSTANT_STRING(SDDL_DEVOBJ_SYS_ALL_ADM_ALL);
     PDEVICE_OBJECT device   = NULL;
     NTSTATUS nt;
     HV_STATUS hs;
@@ -798,8 +837,9 @@ NTSTATUS DriverEntry(_In_ PDRIVER_OBJECT DriverObject, _In_ PUNICODE_STRING Regi
     DriverObject->MajorFunction[IRP_MJ_CLOSE]          = HvDispatchCreateClose;
     DriverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = HvDispatchDeviceControl;
 
-    nt = IoCreateDevice(DriverObject, 0, &dev_name, FILE_DEVICE_UNKNOWN,
-                        FILE_DEVICE_SECURE_OPEN, FALSE, &device);
+    nt = IoCreateDeviceSecure(DriverObject, 0, &dev_name, FILE_DEVICE_UNKNOWN,
+                              FILE_DEVICE_SECURE_OPEN, FALSE, &sddl,
+                              &ALETHEIA_DEVICE_CLASS_GUID, &device);
     if (!NT_SUCCESS(nt))
         return nt;
 

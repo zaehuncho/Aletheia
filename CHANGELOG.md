@@ -48,9 +48,9 @@ lightweight decompiler, all wired into a native workbench UI.
   headers and wraps as `rundll32.exe "<path>",#1` so `DllMain` runs — the
   detector fires from there just as well.
 - **`hv/`** — clean-room Intel VT-x/EPT + AMD-V/NPT VMI hypervisor
-  scaffold, brought to a clean compile (43 KB `aletheia_hv.sys`,
-  valid x64 kernel driver, NATIVE subsystem). Not signed, not loaded;
-  see `hv/BRINGUP.md` for the VM checklist.
+  scaffold with a VM-gated WDK build script. The current source has not
+  been signed, loaded, or runtime-validated; see `hv/BRINGUP.md` for the
+  isolated-VM checklist.
 - **Improved dynamic-unpack error messages**: 193 → BAD_EXE_FORMAT with
   DLL / .sys / arch hints; 740 → ELEVATION_REQUIRED; 5 → ACCESS_DENIED
   with AV/SmartScreen guidance; 2 → FILE_NOT_FOUND.
@@ -75,10 +75,10 @@ lightweight decompiler, all wired into a native workbench UI.
   (previous clamp was 160..2000 wall-clock px, not window-relative).
   Now clamps against the container's live height via `ResizeObserver`.
 
-### Removed
+### Changed
 
-- `aletheia/` `sample_project.json` and `viewer/` static browser dashboard
-  moved off-critical-path; the Rust workbench is the primary UI now.
+- The `viewer/` static browser dashboard remains available as an optional,
+  offline legacy viewer; the Rust workbench is now the primary UI.
 
 ## [0.1.0] – 2026-08-30
 

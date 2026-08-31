@@ -10,7 +10,7 @@ debug, or hypervisor layers.
 
 Please **do not** open a public GitHub issue for a security bug.
 
-Email: **ialijacks1961@gmail.com** with:
+Use GitHub's [private vulnerability reporting form](https://github.com/zaehuncho/Aletheia/security/advisories/new) with:
 
 - A clear description of the class of the problem.
 - A minimal repro against an artifact we can look at — a sample
@@ -24,7 +24,7 @@ we can't meet either, we'll say so and give you a revised date.
 
 **Do not include a working exploit** in the initial mail. Describe
 the class of problem and a repro shape; if we need more detail, we'll
-ask on an encrypted channel of your choice.
+ask through the private advisory thread.
 
 ## Threat model
 

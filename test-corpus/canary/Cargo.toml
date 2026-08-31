@@ -3,7 +3,7 @@ name = "aletheia_canary"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-authors = ["Isaiah <idiahjackson@gmail.com>"]
+authors = ["zaehuncho"]
 description = "Benign write-then-execute canary for validating Aletheia's dynamic detectors. Not malware."
 publish = false
 

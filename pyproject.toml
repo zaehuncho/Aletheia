@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aletheia-re"
+version = "0.2.0"
+description = "Defensive reverse-engineering workbench for Windows PE files"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "zaehuncho" }]
+dependencies = []
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Win32 (MS Windows)",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "Operating System :: Microsoft :: Windows :: Windows 11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Security",
+]
+
+[project.optional-dependencies]
+disasm = ["capstone>=5.0.6,<6"]
+test = ["pytest>=9,<10"]
+dev = ["capstone>=5.0.6,<6", "pytest>=9,<10"]
+
+[project.urls]
+Homepage = "https://github.com/zaehuncho/Aletheia"
+Issues = "https://github.com/zaehuncho/Aletheia/issues"
+Security = "https://github.com/zaehuncho/Aletheia/security/policy"
+
+[tool.setuptools.packages.find]
+include = ["aletheia*", "tools*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

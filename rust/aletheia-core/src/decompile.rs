@@ -68,16 +68,19 @@ pub fn decompile(name: &str, insns: &[Instruction], blocks: &[BasicBlock]) -> De
         labels.insert(b.start);
     }
     for i in insns {
-        if let Some(t) = i.target {
-            if i.is_cond_jmp || i.is_jmp {
-                labels.insert(t);
-            }
+        if let Some(t) = i.target
+            && (i.is_cond_jmp || i.is_jmp)
+        {
+            labels.insert(t);
         }
     }
 
     // Build address → index map for the if-then-triangle scan.
-    let addr_to_idx: HashMap<u64, usize> =
-        insns.iter().enumerate().map(|(i, insn)| (insn.address, i)).collect();
+    let addr_to_idx: HashMap<u64, usize> = insns
+        .iter()
+        .enumerate()
+        .map(|(i, insn)| (insn.address, i))
+        .collect();
 
     let mut src = String::new();
     src.push_str(&format!("void {}(void) {{\n", name));
@@ -169,8 +172,9 @@ fn try_fold_if_then(
     // instruction in the body branches out of the body region (except the
     // last one, which may `jmp` past the target — that's still fine, it just
     // means the outer walk resumes at that jmp's destination).
-    for k in (i + 1)..target_idx {
-        let a = insns[k].address;
+    for (offset, insn) in insns[(i + 1)..target_idx].iter().enumerate() {
+        let k = i + 1 + offset;
+        let a = insn.address;
         // Any label inside the body means someone else branches here —
         // we can't fold safely without risking control-flow drop.
         if k > i + 1 && labels.contains(&a) {
@@ -178,12 +182,12 @@ fn try_fold_if_then(
         }
         // Any conditional branch in the body invalidates the triangle
         // shape (would need nested structuring, out of scope).
-        if insns[k].is_cond_jmp {
+        if insn.is_cond_jmp {
             return None;
         }
         // An unconditional jmp is OK only if it's the LAST instruction of the
         // body (i.e. right before the target); anything earlier is exotic.
-        if insns[k].is_jmp && k != target_idx - 1 {
+        if insn.is_jmp && k != target_idx - 1 {
             return None;
         }
         // A ret in the middle of the body means we don't fall through to
@@ -203,11 +207,11 @@ fn emit_if_then(src: &mut String, insns: &[Instruction], t: &IfThen) {
     let jcc = &insns[t.jcc_idx];
     let cond = negate_cond(&jcc.mnemonic);
     src.push_str(&format!("    if ({}) {{\n", cond));
-    for k in t.body_start..t.body_end {
+    for insn in &insns[t.body_start..t.body_end] {
         // Nested labels inside the body were rejected by the fold guard, so
         // no label emission here.
         src.push_str("        ");
-        src.push_str(&lower_instr(&insns[k]));
+        src.push_str(&lower_instr(insn));
         src.push('\n');
     }
     src.push_str("    }\n");
@@ -220,20 +224,28 @@ fn emit_if_then(src: &mut String, insns: &[Instruction], t: &IfThen) {
 /// Return true if `lower_instr` would fall back to the `_asm(...)` form on
 /// this instruction — used only for the summary warning count.
 fn lower_is_fallback(insn: &Instruction) -> bool {
-    if insn.is_ret || insn.is_call || insn.is_jmp || insn.is_cond_jmp { return false; }
-    let mn = insn.mnemonic.as_str();
-    let parts_len = insn.op_str.split(',').filter(|s| !s.trim().is_empty()).count();
-    match (mn, parts_len) {
-        ("mov" | "movsx" | "movzx" | "movsxd" | "lea", 2) => false,
-        ("add" | "sub" | "and" | "or" | "xor" | "shl" | "shr" | "sar"
-        | "imul" | "sal", 2) => false,
-        ("inc" | "dec" | "neg" | "not", 1) => false,
-        ("cmp" | "test", 2) => false,
-        ("push" | "pop", 1) => false,
-        ("nop", _) => false,
-        ("xchg", 2) => false,
-        _ => true,
+    if insn.is_ret || insn.is_call || insn.is_jmp || insn.is_cond_jmp {
+        return false;
     }
+    let mn = insn.mnemonic.as_str();
+    let parts_len = insn
+        .op_str
+        .split(',')
+        .filter(|s| !s.trim().is_empty())
+        .count();
+    !matches!(
+        (mn, parts_len),
+        ("mov" | "movsx" | "movzx" | "movsxd" | "lea", 2)
+            | (
+                "add" | "sub" | "and" | "or" | "xor" | "shl" | "shr" | "sar" | "imul" | "sal",
+                2
+            )
+            | ("inc" | "dec" | "neg" | "not", 1)
+            | ("cmp" | "test", 2)
+            | ("push" | "pop", 1)
+            | ("nop", _)
+            | ("xchg", 2)
+    )
 }
 
 fn lower_instr(insn: &Instruction) -> String {
@@ -265,14 +277,12 @@ fn lower_instr(insn: &Instruction) -> String {
 
     let parts: Vec<&str> = ops.split(',').map(str::trim).collect();
     match (mn, parts.len()) {
-        ("mov" | "movsx" | "movzx" | "movsxd", 2) =>
-            format!("{} = {};", parts[0], parts[1]),
-        ("lea", 2) =>
-            format!("{} = &{};", parts[0], strip_ptr_prefix(parts[1])),
+        ("mov" | "movsx" | "movzx" | "movsxd", 2) => format!("{} = {};", parts[0], parts[1]),
+        ("lea", 2) => format!("{} = &{};", parts[0], strip_ptr_prefix(parts[1])),
         ("add", 2) => bin_assign(parts[0], "+", parts[1]),
         ("sub", 2) => bin_assign(parts[0], "-", parts[1]),
         ("and", 2) => bin_assign(parts[0], "&", parts[1]),
-        ("or",  2) => bin_assign(parts[0], "|", parts[1]),
+        ("or", 2) => bin_assign(parts[0], "|", parts[1]),
         ("xor", 2) if parts[0] == parts[1] => format!("{} = 0;", parts[0]),
         ("xor", 2) => bin_assign(parts[0], "^", parts[1]),
         ("shl" | "sal", 2) => bin_assign(parts[0], "<<", parts[1]),
@@ -286,7 +296,7 @@ fn lower_instr(insn: &Instruction) -> String {
         ("cmp", 2) => format!("_flags = cmp({}, {});", parts[0], parts[1]),
         ("test", 2) => format!("_flags = test({}, {});", parts[0], parts[1]),
         ("push", 1) => format!("push({});", parts[0]),
-        ("pop",  1) => format!("{} = pop();", parts[0]),
+        ("pop", 1) => format!("{} = pop();", parts[0]),
         ("nop", _) => "/* nop */".to_string(),
         ("xchg", 2) => format!("swap(&{}, &{});", parts[0], parts[1]),
         _ => format!("_asm(\"{} {}\");", mn, ops),
@@ -301,8 +311,16 @@ fn bin_assign(dst: &str, op: &str, src: &str) -> String {
 /// Strip an x86 memory operand's `qword ptr` / `dword ptr` size prefix,
 /// leaving just the `[base + index*scale + disp]` form. Cosmetic only.
 fn strip_ptr_prefix(op: &str) -> &str {
-    for pfx in &["qword ptr ", "dword ptr ", "word ptr ", "byte ptr ",
-                 "xmmword ptr ", "ymmword ptr ", "zmmword ptr ", "tbyte ptr "] {
+    for pfx in &[
+        "qword ptr ",
+        "dword ptr ",
+        "word ptr ",
+        "byte ptr ",
+        "xmmword ptr ",
+        "ymmword ptr ",
+        "zmmword ptr ",
+        "tbyte ptr ",
+    ] {
         if let Some(rest) = op.strip_prefix(pfx) {
             return rest;
         }
@@ -313,23 +331,23 @@ fn strip_ptr_prefix(op: &str) -> &str {
 /// Translate a JCC mnemonic to a C-like condition on `_flags`.
 fn jcc_cond(mn: &str) -> &'static str {
     match mn {
-        "je"  | "jz"                     => "_flags.eq",
-        "jne" | "jnz"                    => "!_flags.eq",
-        "jl"  | "jnge"                   => "_flags.slt",
-        "jle" | "jng"                    => "_flags.sle",
-        "jg"  | "jnle"                   => "_flags.sgt",
-        "jge" | "jnl"                    => "_flags.sge",
-        "jb"  | "jc"   | "jnae"          => "_flags.ult",
-        "jbe" | "jna"                    => "_flags.ule",
-        "ja"  | "jnbe"                   => "_flags.ugt",
-        "jae" | "jnb"  | "jnc"           => "_flags.uge",
-        "js"                             => "_flags.sign",
-        "jns"                            => "!_flags.sign",
-        "jo"                             => "_flags.of",
-        "jno"                            => "!_flags.of",
-        "jp"  | "jpe"                    => "_flags.parity",
-        "jnp" | "jpo"                    => "!_flags.parity",
-        "jcxz" | "jecxz" | "jrcxz"       => "_flags.cx_zero",
+        "je" | "jz" => "_flags.eq",
+        "jne" | "jnz" => "!_flags.eq",
+        "jl" | "jnge" => "_flags.slt",
+        "jle" | "jng" => "_flags.sle",
+        "jg" | "jnle" => "_flags.sgt",
+        "jge" | "jnl" => "_flags.sge",
+        "jb" | "jc" | "jnae" => "_flags.ult",
+        "jbe" | "jna" => "_flags.ule",
+        "ja" | "jnbe" => "_flags.ugt",
+        "jae" | "jnb" | "jnc" => "_flags.uge",
+        "js" => "_flags.sign",
+        "jns" => "!_flags.sign",
+        "jo" => "_flags.of",
+        "jno" => "!_flags.of",
+        "jp" | "jpe" => "_flags.parity",
+        "jnp" | "jpo" => "!_flags.parity",
+        "jcxz" | "jecxz" | "jrcxz" => "_flags.cx_zero",
         _ => "_flags.?",
     }
 }
@@ -339,21 +357,21 @@ fn jcc_cond(mn: &str) -> &'static str {
 fn negate_cond(mn: &str) -> String {
     // Map each mnemonic to its logical inverse.
     let inv = match mn {
-        "je"  | "jz"  => "jne",
+        "je" | "jz" => "jne",
         "jne" | "jnz" => "je",
-        "jl"  | "jnge" => "jge",
-        "jle" | "jng"  => "jg",
-        "jg"  | "jnle" => "jle",
-        "jge" | "jnl"  => "jl",
-        "jb"  | "jc"   | "jnae" => "jae",
-        "jbe" | "jna"           => "ja",
-        "ja"  | "jnbe"          => "jbe",
-        "jae" | "jnb"  | "jnc"  => "jb",
-        "js"  => "jns",
+        "jl" | "jnge" => "jge",
+        "jle" | "jng" => "jg",
+        "jg" | "jnle" => "jle",
+        "jge" | "jnl" => "jl",
+        "jb" | "jc" | "jnae" => "jae",
+        "jbe" | "jna" => "ja",
+        "ja" | "jnbe" => "jbe",
+        "jae" | "jnb" | "jnc" => "jb",
+        "js" => "jns",
         "jns" => "js",
-        "jo"  => "jno",
+        "jo" => "jno",
         "jno" => "jo",
-        "jp"  | "jpe" => "jnp",
+        "jp" | "jpe" => "jnp",
         "jnp" | "jpo" => "jp",
         _ => return format!("!({})", jcc_cond(mn)),
     };
@@ -367,7 +385,7 @@ fn negate_cond(mn: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::disasm::{disassemble_linear, build_cfg};
+    use crate::disasm::{build_cfg, disassemble_linear};
 
     #[test]
     fn ret_only() {
@@ -386,7 +404,11 @@ mod tests {
         let blocks = build_cfg(&insns);
         let out = decompile("demo", &insns, &blocks);
         assert!(out.source.contains("eax = ebx;"), "got:\n{}", out.source);
-        assert!(out.source.contains("eax = eax + 1;"), "got:\n{}", out.source);
+        assert!(
+            out.source.contains("eax = eax + 1;"),
+            "got:\n{}",
+            out.source
+        );
         assert!(out.source.contains("return;"), "got:\n{}", out.source);
     }
 
@@ -398,14 +420,24 @@ mod tests {
         // add eax, 1        ; 3 bytes
         // L: ret            ; 1 byte
         // Total: 11 bytes. jne is at 0x1005, jumps to 0x100A. Body at 0x1007..0x100A.
-        let bytes = [0x89, 0xD8, 0x83, 0xF8, 0x0A, 0x75, 0x03, 0x83, 0xC0, 0x01, 0xC3];
+        let bytes = [
+            0x89, 0xD8, 0x83, 0xF8, 0x0A, 0x75, 0x03, 0x83, 0xC0, 0x01, 0xC3,
+        ];
         let insns = disassemble_linear(&bytes, 0x1000, 64);
         let blocks = build_cfg(&insns);
         let out = decompile("demo", &insns, &blocks);
         // jne-around-body should become `if (_flags.eq)` (invert of !eq).
-        assert!(out.source.contains("if (_flags.eq)"), "got:\n{}", out.source);
+        assert!(
+            out.source.contains("if (_flags.eq)"),
+            "got:\n{}",
+            out.source
+        );
         // Body inside the if.
-        assert!(out.source.contains("eax = eax + 1;"), "got:\n{}", out.source);
+        assert!(
+            out.source.contains("eax = eax + 1;"),
+            "got:\n{}",
+            out.source
+        );
         // No stray goto for the folded triangle.
         assert!(!out.source.contains("goto L_"), "got:\n{}", out.source);
     }
@@ -419,7 +451,11 @@ mod tests {
         let insns = disassemble_linear(&bytes, 0x1000, 64);
         let blocks = build_cfg(&insns);
         let out = decompile("demo", &insns, &blocks);
-        assert!(out.source.contains("call(fn_1005);"), "got:\n{}", out.source);
+        assert!(
+            out.source.contains("call(fn_1005);"),
+            "got:\n{}",
+            out.source
+        );
     }
 
     #[test]

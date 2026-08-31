@@ -151,9 +151,9 @@ implemented against them.
 
 ---
 
-## Honest status — cannot be built or run here
+## Honest status — source only on the development host
 
-**This code cannot be compiled, loaded, or executed in this environment, and has not been.**
+**This code has not been loaded or executed, and must not be built on the development host.**
 It targets Windows x64 kernel mode (a `.sys` built with the WDK/MSVC) and requires real
 virtualization-capable silicon (Intel VT-x + EPT, or AMD-V + NPT) plus a kernel that will
 load an unsigned/test-signed driver.
@@ -171,13 +171,12 @@ load an unsigned/test-signed driver.
   and confirm NPT `SVM_EXIT_NPF` faults fire on watched pages. Until then, treat all of it
   as unverified.
 
-### Building (on a real WDK toolchain, not here)
+### Building (inside a snapshotted VM only)
 
 ```
-# Conceptual only — no build system is committed yet.
-# TODO(hv): add the WDK .vcxproj / build.ps1 that compiles the .c + asm_x64.asm into a .sys,
-# test-sign it, and load with `sc create` on an isolated test box with test-signing enabled.
+./build.ps1 -VmOnlyAcknowledged
 ```
 
-Do not load this on a machine you care about. It is a research instrument for a controlled
-malware-analysis lab.
+The acknowledgment prevents accidental host builds. Signing and loading remain separate,
+manual VM-only steps. Do not load this on a machine you care about; it is a research
+instrument for a controlled malware-analysis lab.

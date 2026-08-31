@@ -9,6 +9,11 @@ __pycache__/
 .venv/
 venv/
 env/
+.coverage
+.ruff_cache/
+*.egg-info/
+build/
+dist/
 
 # Analysis scratch (dumped payloads, sample binaries — never commit malware)
 samples/
@@ -18,6 +23,10 @@ ghidra/
 *.dmp
 *.bin
 *.pdb
+*.pfx
+*.p12
+*.pem
+*.key
 
 # Ephemeral / scratch
 /tmp/
@@ -42,7 +51,6 @@ tools/benchmark/samples/*
 # Rust build artifacts
 rust/target/
 rust/**/target/
-rust/Cargo.lock
 
 # Tauri app front-end deps + build
 rust/aletheia-app/node_modules/

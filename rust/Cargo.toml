@@ -6,10 +6,10 @@ members = ["aletheia-core", "aletheia-app/src-tauri"]
 # `npm create tauri-app` scaffolds it. Until then aletheia-core builds solo.
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 license = "MIT"
-authors = ["Isaiah <idiahjackson@gmail.com>"]
+authors = ["zaehuncho"]
 repository = "https://github.com/zaehuncho/Aletheia"
 
 [workspace.dependencies]

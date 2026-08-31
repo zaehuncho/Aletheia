@@ -14,7 +14,7 @@ internal module layout.
 """
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # --- static triage ---------------------------------------------------------
 from aletheia.pe import parse as parse_pe, PEInfo, Section, shannon_entropy
