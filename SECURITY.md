@@ -10,7 +10,7 @@ debug, or hypervisor layers.
 
 Please **do not** open a public GitHub issue for a security bug.
 
-Email: **idiahjackson@gmail.com** with:
+Email: **ialijacks1961@gmail.com** with:
 
 - A clear description of the class of the problem.
 - A minimal repro against an artifact we can look at — a sample
